@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Earthquake & Fire Events in Japan</title>
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.5.0/mapbox-gl.css" rel="stylesheet" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.5.0/mapbox-gl.js"></script>
+    <style>
+      body {
+        margin: 0;
+        font-family: 'Arial', sans-serif;
+      }
+
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+      }
+
+      #side-panel {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 350px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 16px;
+        box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+
+      @media (max-width: 1024px) {
+        #side-panel {
+          display: none;
+        }
+      }
+
+      h2 {
+        margin: 0 0 16px;
+        font-size: 24px;
+      }
+
+      button {
+        background-color: #007bff;
+        color: white;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-bottom: 12px;
+      }
+
+      button:hover {
+        background-color: #0056b3;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 8px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+      }
+
+      th {
+        background-color: #f2f2f2;
+      }
+
+      tr:hover {
+        background-color: #f1f1f1;
+      }
+
+      #legend {
+  position: absolute;
+  bottom: 16px;
+  right: 400px; /* Adjust to align to the left of the side panel */
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+}
+
+.dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.earthquake {
+  background-color: purple;
+}
+
+.fire {
+  background-color: orange;
+}
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="side-panel">
+      <h2>Japan Earthquakes & Fires</h2>
+      <button id="sort-button">Sort by Magnitude/Intensity</button>
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Magnitude/Intensity</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+    </div>
+    <h3>Legend</h3>
+    <div id="legend">
+      <div><span class="dot earthquake"></span> Earthquakes (Purple)</div>
+      <div><span class="dot fire"></span> Fires (Orange)</div>
+    </div>
+
+    <script>
+      mapboxgl.accessToken = "pk.eyJ1Ijoic29ubnlkb25nIiwiYSI6ImNtNnNyenV2YjBibzcybHBvaHBjcjJ6YWIifQ.HjjHUKE4AYTfMwyOiwMeqw";
+
+      let map = new mapboxgl.Map({
+        container: "map",
+        style: "mapbox://styles/mapbox/satellite-v9",
+        zoom: 5.5,
+        center: [138, 38],
+      });
+
+      async function geojsonFetch() {
+        let response, earthquakes, fires;
+        response = await fetch("assets/earthquakes.geojson");
+        earthquakes = await response.json();
+        response = await fetch("assets/fires.geojson");
+        fires = await response.json();
+
+        map.on("load", function () {
+          // Earthquakes Layer
+          map.addSource("earthquakes", { type: "geojson", data: earthquakes });
+          map.addLayer({
+            id: "earthquakes-layer",
+            type: "circle",
+            source: "earthquakes",
+            paint: {
+              "circle-radius": 8,
+              "circle-stroke-width": 2,
+              "circle-color": "purple",
+              "circle-stroke-color": "white",
+            },
+          });
+
+          // Fires Layer
+          map.addSource("fires", { type: "geojson", data: fires });
+          map.addLayer({
+            id: "fires-layer",
+            type: "circle",
+            source: "fires",
+            paint: {
+              "circle-radius": 8,
+              "circle-stroke-width": 2,
+              "circle-color": "orange",
+              "circle-stroke-color": "white",
+            },
+          });
+        });
+
+        // Populate the table
+        const tableBody = document.querySelector("#data-table tbody");
+        const events = [];
+
+        // Combine both data
+        earthquakes.features.forEach((feature) => {
+          events.push({
+            id: feature.properties.id,
+            value: feature.properties.mag,
+            time: feature.properties.time,
+          });
+        });
+
+        fires.features.forEach((feature) => {
+          events.push({
+            id: feature.properties.id,
+            value: feature.properties.intensity,
+            time: feature.properties.time,
+          });
+        });
+
+        events.forEach((event) => {
+          const row = tableBody.insertRow();
+          row.insertCell(0).textContent = event.id;
+          row.insertCell(1).textContent = event.value;
+          row.insertCell(2).textContent = new Date(event.time).toLocaleDateString("en-US");
+        });
+
+        // Sorting functionality
+        document.getElementById("sort-button").addEventListener("click", () => {
+          const rows = Array.from(tableBody.rows);
+          const sortedRows = rows.sort((a, b) => {
+            const valA = parseFloat(a.cells[1].textContent);
+            const valB = parseFloat(b.cells[1].textContent);
+            return valB - valA;
+          });
+
+          // Clear and re-append sorted rows
+          tableBody.innerHTML = "";
+          sortedRows.forEach((row) => tableBody.appendChild(row));
+        });
+      }
+
+      geojsonFetch();
+    </script>
+  </body>
+</html>
